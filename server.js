@@ -4,6 +4,7 @@ var express = require('express');
 var mongo = require('mongodb');
 var mongoose = require('mongoose');
 const dns = require('dns');
+const urlExists = require('url-exists')
 
 var cors = require('cors');
 
@@ -67,42 +68,53 @@ const searchLong = async function(id) {
   return doc;
 }
 
+
+
+
+const checkUrl = function(url) {
+  
+  if (url.slice(0,8) === 'https://' || url.slice(0,7) === 'http://') {
+     return url
+  } else if (url.slice(0,4) === 'www.') {
+    return('https://' + url)
+  } else {
+    return ('https://www.' + url)
+  }
+}
+
 app.post('/api/shorturl/new', async function (req, res) {
   
   let id = {};
   
-  let filteredUrl = req.body.url;
+  let url = checkUrl(req.body.url);
   
-  if (filteredUrl.slice(0,8) === 'https://' ) { 
-    filteredUrl = filteredUrl.slice(8);
-  } else if (filteredUrl.slice(0,7) === 'http://') {
-    filteredUrl = filteredUrl.slice(7);
-  }
   
-  dns.lookup(filteredUrl, function(err, address) {
-    if (err) {
-      console.log(err)
-      console.log('dns error ' + filteredUrl)
+  urlExists(url, async function(err, exists) {
+    if (exists) {
+          
+      let docCount = await Url.countDocuments({original: req.body.url});
+  
+      if (docCount === 0) {
+        id.new = await makeShorty(req.body.url)
+      } else {
+        id = await searchShorty(req.body.url);
+      }
+      res.json({'original_url': req.body.url, 'short_url': id.new}) 
+    } else {
+
       res.json({'error': 'invalid url'})
     }
-  }) 
+  })
   
-  let docCount = await Url.countDocuments({original: req.body.url});
-  
-  if (docCount === 0) {
-    id.new = await makeShorty(req.body.url)
-  } else {
-    id = await searchShorty(req.body.url);
-  }
-  
-
-  res.json({'original_url': req.body.url, 'short_url': id.new})
 })
 
 app.get('/api/shorturl/:num', async function(req, res) {
-  console.log(req.params)
+  
   let id = await searchLong(req.params.num)
-  res.redirect(id.original)
+ 
+  let newUrl = checkUrl(id.original)
+  
+  res.redirect(newUrl)
 })
 
 app.listen(port, function () {
